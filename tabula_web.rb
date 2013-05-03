@@ -22,7 +22,10 @@ if Settings::ASYNC_PROCESSING
   require './lib/jobs/generate_thumbnails.rb'
 end
 
-require './lib/jruby_dump_characters.rb' if IS_JRUBY
+if IS_JRUBY
+  require './lib/jruby_dump_characters.rb'
+  require './lib/thumbnail_generator.rb'
+end
 
 require './tabula_extractor/tabula.rb'
 
@@ -181,12 +184,17 @@ Cuba.define do
                                          :lg_thumbnail_job => lg_thumbnail_job)
         res.redirect "/queue/#{upload_id}"
       else
-        run_mupdfdraw(File.join(file_path, 'document.pdf'), file_path, 560) # 560 width
-        run_mupdfdraw(File.join(file_path, 'document.pdf'), file_path, 2048) # 2048 width
         if !IS_JRUBY
-          run_jrubypdftohtml(File.join(file_path, 'document.pdf'), file_path)
+          run_mupdfdraw(file, file_path, 560) # 560 width
+          run_mupdfdraw(file, file_path, 2048) # 2048 width
+          run_jrubypdftohtml(file, file_path)
         else
-          XMLGenerator.new(File.join(file_path, 'document.pdf'), file_path).generate_xml!
+          [Thread.new { 
+              PDFThumbnailGenerator.new(file, file_path, [2048, 560]).generate_thumbnails!
+           },
+           Thread.new {
+             XMLGenerator.new(File.join(file_path, 'document.pdf'), file_path).generate_xml!
+           }].each { |t| t.join }
         end
         res.redirect "/pdf/#{file_id}"
       end
